@@ -162,11 +162,11 @@ geom_density(data=postmelt[postmelt$variable!="MENHINICK",],aes(x=value,group=va
 geom_density(data=postmelt[postmelt$variable=="MENHINICK",],aes(x=value)) + facet_wrap(~factor(clean3$ISLAND,levels=names)) + xlab("Menhinick Index") + ylab("Density")
 ```
 
-Figure 3 displays the predicted range of values of the linear mixed effects model compared to the rest of the data, separated for each island. The range of estimated values seems to mostly capture the data from the islands, but does not always capture smaller features, such as the peak in "Rose", the skew to the right in "Maro", or the plateau close to the center in "Alamagan". Higher uncertainty ranges are also seen for some islands, mostly likely showing a lower number of sampled sites.
+Figure 2 displays the predicted range of values of the linear mixed effects model compared to the rest of the data, separated for each island. The range of estimated values seems to mostly capture the data from the islands, but does not always capture smaller features, such as the peak in "Rose", the skew to the right in "Maro", or the plateau close to the center in "Alamagan". Higher uncertainty ranges are also seen for some islands, mostly likely showing a lower number of sampled sites.
 
 ## Model Checking
 
-Figure 2 displays the residual and Q-Q plots for the linear mixed effects models. The residuals in the plot appear to distribute around 0. Additionally, there appear to be no obvious patterns or signs of heteroscedasticity. The Q-Q plot shows a linear relationship between the theoretical and sample quantities, showing that the model's predicted values follow a similar distribution as the data.
+Figure 3 displays the residual and Q-Q plots for the linear mixed effects models. The residuals in the plot appear to distribute around 0. Additionally, there appear to be no obvious patterns or signs of heteroscedasticity. The Q-Q plot shows a linear relationship between the theoretical and sample quantities, showing that the model's predicted values follow a similar distribution as the data.
 
 ```{r,echo=F, fig.cap="\\label{fig:figs} Residual and Q-Q plot of the linear mixed effects model.", fig.height=3}
 par(mfrow=c(1,2))
@@ -239,7 +239,7 @@ ggplot(with(clean3,clean3[order(REGION),])) + geom_histogram(aes(x=MENHINICK,fil
 
 ## Model selection and transformations
 
-Because of the nature of coral reefs, surveys done at the same islands will likely to have correlation with one another. They will most likely also have correlation with other islands in the same region. In order to account for this correlation, a linear mixed effects model was constructed using islands as random effects. Year, depth, visibility, the measured height of the substrate, and the percent coverage of hard coral, macroalgae, sand, and crustose coralline algae were used as fixed effects for the model. To improve interpretability of variables, depth was standardized by using a z-score, year was centered at 2014, and the percent coverage of each feature was divided by 10. Models were constructed using the lme4 and rstanarm packages in r. Predictions were made following a Bayesian posterior predictive in rstanarm. 
+Surveys done at the same islands will likely to have correlation with one another, and correlation within region. In order to account for this correlation, a linear mixed effects model was constructed using islands as random effects. Year, depth, visibility, the measured height of the substrate, and the percent coverage of hard coral, macroalgae, sand, and crustose coralline algae were used as fixed effects for the model. To improve interpretability of variables, depth was standardized by using a z-score, year was centered at 2014, and the percent coverage of each feature was divided by 10. Models were constructed using the lme4 and rstanarm packages in r. Predictions were made following a Bayesian posterior predictive in rstanarm. 
 
 # Bibliography
 
@@ -247,10 +247,7 @@ Bates, Douglas; Maechler, Martin; Bloker, Ben; Walker, Steve (2015). Fitting Lin
 
 Goodrich, Ben; Gabry, Jonah; Ali, Iamd; Brilleman, Sam (2018). "rstanarm: Bayesian applied regression modeling via Stan." R package version 2.17.4, http://mc-stan.org/.
 
-
 Hadley Wickham (2017). tidyverse: Easily Install and Load the 'Tidyverse'. R package version 1.2.1. https://CRAN.R-project.org/package=tidyverse
-
-Heenan, Adel; Williams, Ivor; Acoba, Tomoko; DesRochers, Annette; Kanemura, Troy; Kosaki, Randall; Nadon, Marc; Brainard, Russel (2017). Long-term monitoring of coral reef fish assemblages in the Western central pacific. Sci. Data. 4:170176 doi:10.1038/sdata.2017.176
 
 Heenan, Adel; Williams, Ivor; Acoba, Tomoko; DesRochers, Annette; Kanemura, Troy; Kosaki, Randall; Nadon, Marc; Brainard, Russel (2017). Long-term monitoring dataset of coral reef fish assemblages in the western central Pacific. figshare. Collection. https://doi.org/10.6084/m9.figshare.c.3808039.v1
 
