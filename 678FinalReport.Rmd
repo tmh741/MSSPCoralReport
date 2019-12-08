@@ -1,0 +1,286 @@
+---
+title: "Biodiversity in Coral Reefs"
+author: "Tim Hogan"
+date: "12/6/2019"
+output: 
+  pdf_document:
+    fig_caption: yes
+    includes:
+      in_header: header.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(magrittr)
+library(lme4)
+library(arm)
+library(gridExtra)
+library(vegan)
+library(rstanarm)
+library(bayesplot)
+library(car)
+library(sjPlot)
+```
+
+
+```{r,echo=F}
+data <- read.csv("https://ndownloader.figshare.com/files/9335584")
+```
+
+```{r,echo=F}
+data2012 <- subset(data,OBS_YEAR >= 2012)
+newdata <- subset(data2012,COUNT!=0)
+newdata %<>% dplyr::select(REGION,ISLAND,SITE,REEF_ZONE,
+                            OBS_YEAR,DEPTH_M,HARD_CORAL,MA,CCA,SAND,
+                            OTHER,HABITAT_CODE,
+                            MAX_DEPTH_M,MAX_HEIGHT,VISIBILITY_M,SPECIES,COUNT)
+clean <- newdata %>% unite(col=Code, c("REGION","ISLAND","SITE",
+                                            "REEF_ZONE","OBS_YEAR",
+                                            "DEPTH_M","HARD_CORAL","MA",
+                                            "CCA","SAND","OTHER",
+                                            "HABITAT_CODE","MAX_DEPTH_M",
+                                            "MAX_HEIGHT","VISIBILITY_M")
+                                ,sep="_",remove=T)
+clean %<>% group_by(Code) %>% summarize(RICHNESS=n(),TOTALFISH = sum(COUNT),
+                                            SHANNON=diversity(COUNT)) %>%
+  mutate(MENHINICK=RICHNESS/sqrt(TOTALFISH))
+
+clean %<>% separate(col=Code, into = c("REGION","ISLAND","SITE",
+                                           "REEF_ZONE","OBS_YEAR",
+                                           "DEPTH_M","HARD_CORAL","MA",
+                                           "CCA","SAND","OTHER",
+                                           "HABITAT_CODE","MAX_DEPTH_M",
+                                           "MAX_HEIGHT","VISIBILITY_M"), sep="_")
+for (i in 1:ncol(clean)){
+  clean[,i] <- type.convert(clean[,i])
+}
+
+zscore <- function(x) {
+  z <- (x - mean(x))/sd(x)
+  return(z)
+}
+
+clean$HARD.Z <- zscore(clean$HARD_CORAL)
+clean$MA.Z <- zscore(clean$MA)
+clean$CCA.Z <- zscore(clean$CCA)
+clean$SAND.Z <- zscore(clean$SAND)
+clean$OTHER.Z <- zscore(clean$OTHER)
+clean$YEARC <- clean$OBS_YEAR - 2014
+clean$DEPTH.Z <- zscore(clean$DEPTH_M)
+clean$VISIBILITY.Z <- zscore(clean$VISIBILITY_M)
+
+clean$DEPTH <- clean$DEPTH_M - 5 
+
+clean$SHANNON.Z <- zscore(clean$SHANNON)
+
+clean2 <- clean[clean$REGION!="PRIA",]
+clean3 <- na.omit(dplyr::select(clean2,c(HARD_CORAL, MA, SAND, CCA, DEPTH.Z,YEARC,MAX_HEIGHT, DEPTH, VISIBILITY_M, ISLAND, REGION,MENHINICK)))
+clean3 <- clean3[order(clean3$REGION),]
+names <- unique(clean3$ISLAND)
+clean3$VIS.Z <- zscore(clean3$VISIBILITY_M)
+```
+
+# Introduction
+
+Coral reefs are an important marine ecosystem. Their structure allows them to host many species of organisms, which can act as an important resource for humans. However, as climate change and human impact apply pressure to these reefs, the diversity and number of these species may be threatened. Understanding the impact of coral reef degradation on the organisms within it is imperative, as it can allow management to more protectively protect these ecosystems.
+
+This report will investigate how species richness can be affected by multiple features of coral reefs by analyzing data from the NOAA Pacific RAMP fish SPC 2010-2017 dataset (Heenan et al. 2017). This dataset compiles ~4700 reef surveys in 39 islands in the western Pacific Ocean, from 2010 to 2017. To assess species richness, I will calculate the Menhinick index at each site of the reef, and use a linear mixed effects model to assess how the composition of the seabed, substrate height, visibility, and year influence a site's Menhinick index.
+
+# Results
+
+```{r,echo=F}
+men7 <- lmer(MENHINICK ~ 
+               I(HARD_CORAL/10) + I(MA/10) + I(SAND/10) + I(CCA/10) +
+               DEPTH.Z + YEARC + MAX_HEIGHT + VIS.Z +
+               (1|ISLAND),data=clean3)
+```
+
+## Estimations
+
+```{r,include=F}
+a <- fixef(men7)
+c1 <- confint(men7)
+b <- c1[-1:-2,]
+Var = c("Intercept","Hard Coral (10%)", "Macroalgae (10%)", "Sand (10%)", "CCA (10%)", "Depth (Normalized)", "Year", "Substrate Height (m)", "Visibility (m)")
+
+
+d <- cbind(b,a)
+dta <- data.frame(Value = a,
+                  Dispval = round(a,digits=3),
+                 up= b[,1],
+                 low=b[,2],
+                 index=rownames(d),
+                 Variables = Var)
+dtn <- dta[-1,]
+
+rr1 <- ranef(men7)
+dd <- as.data.frame(rr1)
+```
+
+```{r,echo=F,results="asis", fig.cap="\\label{fig:figs} The predicted coefficients and 95% confidence interval for each fixed effect in the linear mixed effects model. The estimated value is displayed above each point estimate. 0 is highlighted with a dotted blue line.", fig.height=3}
+ggplot(dtn,aes(y=Variables,x=Value,xmin=low,xmax=up,label=Dispval)) + geom_vline(aes(xintercept=0),color="darkblue",linetype="dashed",alpha=1)  + theme_bw() +
+  geom_point() + geom_errorbarh(height=0) + geom_text(nudge_y=0.205,nudge_x=0.003,size=2)
+```
+
+Figure 1 graphically summarizes the estimated effects of the linear mixed effects model, as well as their 95% confidence intervals. Depth, substrate height, year, and hard coral have strong evidence of a positive effect on species richness. The effect of hard coral seems relatively small, with the Menhinick index estimated to increase by ~0.028 for each 10% increase in hard coral cover. Additionally, macroalgae is displayed to have a strong negative effect on species richness, with an estimated decrease of 0.082 in the Menhinick index for each increase of 10% of macroalgae cover. The effect of sand, crustose coralline algae, and visibility are found to be small, with confidence intervals crossing 0, indicating that our model does not have strong enough evidence to support that they significantly influence species richness.
+
+## Predictions
+
+```{r,echo=F}
+#stan_fit <- stan_lmer(MENHINICK ~ 
+#               I(HARD_CORAL/10) + I(MA/10) + I(SAND/10) + I(CCA/10) +
+#               DEPTH.Z + YEARC + MAX_HEIGHT + VIS.Z +
+#               (1|ISLAND),data=clean3)
+#saveRDS(stan_fit,"coral_fit.rds")
+stan_fit <- readRDS("coral_fit.rds")
+posterior <- posterior_predict(stan_fit)
+```
+
+```{r,echo=F}
+set.seed(2019)
+nsim <- 30
+num <- round(runif(nsim,3001,4000),0)
+posteriorav <- as.data.frame(t(posterior[num,]))
+```
+
+```{r,include=F}
+posteriorav <- as.data.frame(posteriorav)
+postdata <- cbind(posteriorav,clean3$REGION,clean3$ISLAND,clean3$MENHINICK)
+sims <- paste0("sim",1:nsim)
+colnames(postdata)[c(1:nsim)] <- paste0("sim",1:nsim)
+colnames(postdata)[c(nsim+1,nsim+2,nsim+3)] <- c( "REGION", "ISLAND","MENHINICK")
+postmelt <- reshape2::melt(postdata)
+```
+
+```{r,echo=F,fig.cap="\\label{fig:figs} Density plots of posterior predicted values for Menhinick Indices on each island, colored by region, as well as the actual data’s density (black).", fig.height=4}
+ggplot() + theme_bw() + 
+  theme(axis.text.y=element_text(size=5),
+    strip.text=element_text(size=6)) +
+geom_density(data=postmelt[postmelt$variable!="MENHINICK",],aes(x=value,group=variable,color=REGION)) +
+geom_density(data=postmelt[postmelt$variable=="MENHINICK",],aes(x=value)) + facet_wrap(~factor(clean3$ISLAND,levels=names)) + xlab("Menhinick Index") + ylab("Density")
+```
+
+Figure 3 displays the predicted range of values of the linear mixed effects model compared to the rest of the data, separated for each island. The range of estimated values seems to mostly capture the data from the islands, but does not always capture smaller features, such as the peak in "Rose", the skew to the right in "Maro", or the plateau close to the center in "Alamagan". Higher uncertainty ranges are also seen for some islands, mostly likely showing a lower number of sampled sites.
+
+## Model Checking
+
+Figure 2 displays the residual and Q-Q plots for the linear mixed effects models. The residuals in the plot appear to distribute around 0. Additionally, there appear to be no obvious patterns or signs of heteroscedasticity. The Q-Q plot shows a linear relationship between the theoretical and sample quantities, showing that the model's predicted values follow a similar distribution as the data.
+
+```{r,echo=F, fig.cap="\\label{fig:figs} Residual and Q-Q plot of the linear mixed effects model.", fig.height=3}
+par(mfrow=c(1,2))
+plot(fitted(men7),resid(men7),main="Residual Plot for Model",xlab="Fitted Value",ylab="Residuals",asp=0.5)
+qqnorm(resid(men7));qqline(resid(men7))
+```
+
+# Discussion
+
+The negative effect of macroalgae reflect an effect found in literature. Usually, when coral dies, it becomes outcompeted by algae. This effect may be highlighting areas that have been outcompeted, and now have a lower diversity of species. Conversely, the small effect of hard coral is surprising, since usually they are thought to provide spaces for new species to thrive. The very positive effect of substrate height may be capturing the effect of coral, since it would allow organisms to utilize more space. However, this may also be an effect of the data, and should be tested in other reefs or locations.
+
+The predicted effect of year is also unintuitive to understand. Effectively, the model predicts that the Menhinick index at a particular site is expected to have a 0.092 increase in Menhinick Index. While this change is relatively small, it contrasts with what would be expected from the effects of increasing water temperatures. It is possible that this could be the impact of some change in policy for diving or fisheries, which allows more organisms to thrive. However, it at this point, it is relatively unknown.
+
+While the constructed model seems to have good residuals and a good fit, the predicted values show some limitations. Mostly, it consistently attempts to produce data in a bell curve, which most of the models don't necessarily follow. This may be the impact of the linear mixed effects model overcorrecting for islands with smaller sample sizes, since a lot of them have high uncertainty, shown by their wider colored bars. 
+
+One major limitation with this dataset is that it contains no direct metrics for important factors, such as coral health or water temperature. Without external resources, it is difficult to tell if corals in a certain area are bleached or healthy, water temperature, or other aspects that could affect reefs. It could be possible that the current coefficients are capturing this effect, and becoming more or less positive as a result. Since there are many other open datasets for coral reefs, one possible approach to improving this model is integrating it with other datasets, allowing it to take factors like temperature, bleaching, or nutrient amounts into account. 
+
+# Methods
+
+## Data Cleaning and Selection
+
+Data was downloaded and cleaned using the tidyverse package in R. The data selected for the model was selected from 2012 to 2017, since earlier surveys did not consistently measure substrate height (Heenan et al. 2017). 
+
+The data contains survey conducted in five listed regions, being the main Hawaiian Islands (MHI), northwestern Hawaiian Islands (NWHI), American Samoa (SAMOA), the Northern Mariana Islands (MARIAN), and  Pacific Remote Island Areas (PRIA). The distribution of these islands is displayed in Figure 4. In it, it shows that four of the regions are contained in island chains, whereas PRIA appears to be scattered across a large region. In order to account for this difference, PRIA was not considered in the model. The final dataset contained data from  ~2800 survey, including four regions and 33 islands.
+
+```{r,echo=F}
+locations <- data2012 %>% 
+  dplyr::select(REGION, ISLAND, SITE,LATITUDE,LONGITUDE) %>% 
+  distinct() %>%
+  mutate(Lon = abs(LONGITUDE))
+
+islands <- data2012 %>%
+  dplyr::select(REGION, ISLAND) %>% 
+  distinct() %>%
+  group_by(REGION) %>%
+  summarize(n=n()) %>%
+  ungroup()
+
+counts <- data2012 %>%
+  dplyr::select(SPECIES, COUNT) %>% 
+  group_by(COUNT) %>%
+  summarize(n=n()) %>%
+  ungroup()
+
+sites <- data2012 %>%
+  dplyr::select(ISLAND,SITE) %>%
+  distinct() %>% group_by(ISLAND) %>% summarize(n=n())
+
+longtransform <- function (x){
+  if (x<0){
+    x <- x + 360
+  }
+  return(x)
+}
+
+for (i in 1:nrow(locations)) {
+  locations$test[i] <- longtransform(locations$LONGITUDE[i])
+}
+```
+
+```{r,echo=F, fig.cap="\\label{fig:figs} Map displaying each island surveyed in the dataset from 2012 onwards, colored by region."}
+ggplot(locations) + geom_point(aes(y=LATITUDE,x=test,color=REGION)) + theme_bw() + ylab("Latitude") + xlab("Longitude")
+```
+
+For each survey, the Menhinick index was calculated at each site usign the equation $M = \frac{n}{\sqrt{N}}$, where $n$ is the observed number of species at that site, and $N$ is the observed number of organisms. The distribution of calculated Menhinick Index is displayed below in Figure 5. 
+
+```{r,echo=F, fig.cap="\\label{fig:figs} Histogram displaying distribution of Menhinick indices at each island, colored by region."}
+ggplot(with(clean3,clean3[order(REGION),])) + geom_histogram(aes(x=MENHINICK,fill=REGION),position="identity",bins=30) + theme_bw() + facet_wrap(~factor(ISLAND,levels=names)) + xlab("Menhinick Index") + ylab("Number of times Observed")
+```
+
+## Model selection and transformations
+
+Because of the nature of coral reefs, surveys done at the same islands will likely to have correlation with one another. They will most likely also have correlation with other islands in the same region. In order to account for this correlation, a linear mixed effects model was constructed using islands as random effects. Year, depth, visibility, the measured height of the substrate, and the percent coverage of hard coral, macroalgae, sand, and crustose coralline algae were used as fixed effects for the model. To improve interpretability of variables, depth was standardized by using a z-score, year was centered at 2014, and the percent coverage of each feature was divided by 10. Models were constructed using the lme4 and rstanarm packages in r. Predictions were made following a Bayesian posterior predictive in rstanarm. 
+
+# Bibliography
+
+Bates, Douglas; Maechler, Martin; Bloker, Ben; Walker, Steve (2015). Fitting Linear Mixed-Effects Models Using lme4. Journal of Statistical Software, 67(1), 1-48.
+
+Goodrich, Ben; Gabry, Jonah; Ali, Iamd; Brilleman, Sam (2018). "rstanarm: Bayesian applied regression modeling via Stan." R package version 2.17.4, http://mc-stan.org/.
+
+
+Hadley Wickham (2017). tidyverse: Easily Install and Load the 'Tidyverse'. R package version 1.2.1. https://CRAN.R-project.org/package=tidyverse
+
+Heenan, Adel; Williams, Ivor; Acoba, Tomoko; DesRochers, Annette; Kanemura, Troy; Kosaki, Randall; Nadon, Marc; Brainard, Russel (2017). Long-term monitoring of coral reef fish assemblages in the Western central pacific. Sci. Data. 4:170176 doi:10.1038/sdata.2017.176
+
+Heenan, Adel; Williams, Ivor; Acoba, Tomoko; DesRochers, Annette; Kanemura, Troy; Kosaki, Randall; Nadon, Marc; Brainard, Russel (2017). Long-term monitoring dataset of coral reef fish assemblages in the western central Pacific. figshare. Collection. https://doi.org/10.6084/m9.figshare.c.3808039.v1
+
+
+
+
+# Appendix
+
+
+```{r,echo=F,fig.cap="\\label{fig:figs} Plot showing distribution of hard coral, macroalgae, crustose coralline algae, and sand coverage. The peaks centered around 5 most likely show a preference of estimation."}
+p1<-ggplot(clean) + geom_histogram(aes(x=HARD_CORAL),bins=30) + xlab("Hard Coral cover (%)") + ylab("Count")
+p2<-ggplot(clean) + geom_histogram(aes(x=MA),bins=30) + xlab("Macroalgae cover (%)") + ylab("Count")
+p3<-ggplot(clean) + geom_histogram(aes(x=CCA),bins=30) + xlab("Coralline Algae cover (%)") + ylab("Count")
+p4<-ggplot(clean) + geom_histogram(aes(x=SAND),bins=30) + xlab("Sand cover (%)") + ylab("Count")
+grid.arrange(p1,p2,p3,p4)
+```
+
+```{r,echo=F,fig.cap="\\label{fig:figs} The first plot compares species richness to the Menhinick Index colored by region. The second plot compares the number of observed species to the Menhinick Index colored by region. The curved line reflect the relationship between values. Another clear factor here is that PRIA has a larger number of observed fish."}
+p1 <-ggplot(clean) + geom_point(aes(x=RICHNESS,y=MENHINICK,color=REGION)) + xlab("Number of species") + ylab("Menhinick Index")
+p2 <- ggplot(clean) + geom_point(aes(x=TOTALFISH,y=MENHINICK,color=REGION)) + xlab("Number of observed fish") + ylab("Menhinick Index")
+grid.arrange(p1,p2)
+```
+
+```{r,echo=F,fig.cap="\\label{fig:figs} Point estimates and 95% confidence intervals of the random effects of the linear mixed effects model."}
+rr1 <- ranef(men7)
+dd <- as.data.frame(rr1)
+
+ggplot(dd,aes(y=grp,x=condval)) + geom_vline(aes(xintercept=0),color="darkblue",linetype="dashed",alpha=1) +
+  geom_point() +
+  geom_errorbarh(aes(xmin=condval -2*condsd,xmax=condval+2*condsd),height=0) + ylab("Island") + theme_bw() +
+  xlab("Random Effect")
+```
+
